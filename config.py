@@ -16,7 +16,7 @@ LOAD = False
 
 # ----- Modèle (UNET) -----
 MODEL = "UNET"
-NUM_CHANNELS = 64
+NUM_CHANNELS = 32
 NUM_RES_BLOCKS = 2
 NUM_HEADS = 4
 NUM_HEADS_UPSAMPLE = -1
@@ -28,7 +28,7 @@ USE_SCALE_SHIFT_NORM = True
 # ----- Device -----
 DEVICE = "cuda"                          # "cpu" si pas de GPU
 DATAPARALLEL = True
-NUM_WORKERS = 4
+NUM_WORKERS = 2
 PIN_MEMORY = True
 
 # ----- Entraînement -----
