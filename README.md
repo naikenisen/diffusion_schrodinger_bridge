@@ -53,9 +53,7 @@ or, if `git` is unavailable, download as a ZIP from GitHub https://github.com/<r
   
 2. Install:
 
-    `conda env create -f conda.yaml`
-    
-    `conda activate bridge`
+
 
 3. Download data examples:
 
