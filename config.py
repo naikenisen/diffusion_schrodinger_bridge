@@ -32,7 +32,7 @@ NUM_WORKERS = 4
 PIN_MEMORY = True
 
 # ----- Entraînement -----
-BATCH_SIZE = 8
+BATCH_SIZE = 2
 LR = 1e-4
 NUM_ITER = 50000
 N_IPF = 20
