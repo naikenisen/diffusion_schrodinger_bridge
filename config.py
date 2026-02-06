@@ -32,12 +32,12 @@ NUM_WORKERS = 2
 PIN_MEMORY = True
 
 # ----- Entraînement -----
-BATCH_SIZE = 2
+BATCH_SIZE = 4
 LR = 1e-4
 NUM_ITER = 50000
 N_IPF = 20
 N_IPF_INIT = 1
-CACHE_NPAR = 32
+CACHE_NPAR = 16
 NUM_CACHE_BATCHES = 1
 CACHE_REFRESH_STRIDE = 100
 USE_PREV_NET = True
@@ -52,7 +52,7 @@ GRAD_CLIPPING = True
 GRAD_CLIP = 1.0
 
 # ----- Schedule de diffusion -----
-NUM_STEPS = 50
+NUM_STEPS = 30
 GAMMA_MAX = 0.1
 GAMMA_MIN = 1e-5
 GAMMA_SPACE = "linspace"                 # "linspace" ou "geomspace"
