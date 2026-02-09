@@ -1,3 +1,10 @@
+"""
+Ce fichier regroupe des briques de réseau (layers) utilisées par les modèles "basic".
+En général, on y met des composants réutilisables (ex : MLP, blocs, fonctions d’activation).
+L’objectif est d’éviter de réécrire les mêmes couches dans plusieurs fichiers.
+"""
+
+
 import torch
 from torch import nn
 import torch.nn.functional as F

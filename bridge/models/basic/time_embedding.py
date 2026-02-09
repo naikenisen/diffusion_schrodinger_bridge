@@ -1,3 +1,10 @@
+"""
+Ce fichier fournit une fonction d’encodage du temps (timestep embedding).
+L’idée est de transformer un nombre t (étape de diffusion) en un vecteur de taille fixe,
+avec des sinusoïdes (sin/cos), afin que le réseau puisse mieux utiliser l’information temporelle.
+C’est le même principe que les positional encodings utilisés dans les Transformers.
+"""
+
 import torch
 import torch.nn.functional as F
 import math

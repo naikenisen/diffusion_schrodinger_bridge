@@ -1,3 +1,13 @@
+"""
+Ce fichier contient les briques de base du UNet utilisé dans le modèle de diffusion / bridge.
+On y trouve des modules réutilisables comme :
+- blocs résiduels (ResBlock)
+- attention (AttentionBlock)
+- upsample / downsample
+- embeddings de temps
+- checkpointing (économie mémoire)
+Ce fichier sert de "boîte à outils" pour construire l’architecture du UNet dans unet.py.
+"""
 
 import math
 from abc import abstractmethod

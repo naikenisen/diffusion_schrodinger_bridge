@@ -1,3 +1,12 @@
+"""
+Ce fichier définit le dataset PyTorch HES_CD30.
+Il sert à charger des images depuis un dossier organisé par domaines (HES ou CD30),
+à appliquer les transformations (resize, crop, conversion en tenseur), puis à fournir
+les images au DataLoader pendant l’entraînement. Il ne fait pas l’entraînement : il ne fait
+que "lire et préparer" les images.
+"""
+
+
 import os
 import glob
 import torch

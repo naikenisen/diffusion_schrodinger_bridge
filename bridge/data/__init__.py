@@ -1,3 +1,11 @@
+"""
+Ce fichier regroupe des fonctions utilitaires liées au pré-traitement des données.
+Il contient des transformations appliquées aux images avant de les envoyer au modèle
+(ex : ajout de bruit léger, changement d’échelle des valeurs, transformation logit).
+L’objectif est de mettre les données dans un format plus adapté et plus stable pour l’apprentissage.
+"""
+
+
 import torch
 
 

@@ -1,3 +1,13 @@
+"""
+Ce fichier définit l’architecture principale UNetModel (et SuperResModel).
+Le UNet est le réseau utilisé pour traiter des images dans les modèles de diffusion :
+- il descend en résolution pour capturer le contexte global
+- puis remonte en résolution pour reconstruire des détails
+- il utilise des connexions "skip" pour ne pas perdre d’informations
+Le réseau est conditionné par le temps (timesteps) et peut inclure de l’attention à certaines résolutions.
+"""
+
+
 from abc import abstractmethod
 
 import math

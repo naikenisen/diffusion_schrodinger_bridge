@@ -1,3 +1,14 @@
+"""
+Ce fichier contient une version simple de réseau de score (ScoreNetwork).
+Il s’agit d’un petit réseau de type MLP qui prend en entrée :
+- une donnée x (ex : position / vecteur / état)
+- un temps t (timestep)
+et produit une sortie correspondant à une information "de score" utilisée dans les méthodes
+de diffusion / Schrödinger Bridge. C’est une version légère, plutôt utilisée sur des données simples
+(par ex en 2D), pas sur des images.
+"""
+
+
 import torch
 from .layers import MLP
 from .time_embedding import get_timestep_embedding

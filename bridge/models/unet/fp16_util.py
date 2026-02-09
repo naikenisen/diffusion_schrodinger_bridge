@@ -1,9 +1,9 @@
 """
-Outils pour entraîner un modèle en "semi-précision" (float16).
-Idée :
-- float16 = moins de mémoire + souvent plus rapide sur GPU
-- mais float16 peut être moins stable numériquement
-→ on utilise parfois des "master params" en float32 pour garder la stabilité.
+Ce fichier contient des outils pour entraîner le modèle avec moins de mémoire grâce au float16 (FP16).
+Le FP16 accélère souvent l’entraînement sur GPU et réduit l’utilisation mémoire, mais peut être moins stable.
+Le fichier propose donc des fonctions pour :
+- convertir certains modules en float16 / float32
+- gérer des paramètres "maîtres" en float32 pour garder une optimisation stable.
 """
 
 import torch.nn as nn
