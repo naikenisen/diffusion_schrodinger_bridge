@@ -46,7 +46,7 @@ GRAD_CLIPPING = True
 GRAD_CLIP = 1.0
 
 # ----- Schedule de diffusion -----
-NUM_STEPS = 15
+NUM_STEPS = 20
 GAMMA_MAX = 0.1
 GAMMA_MIN = 1e-5
 GAMMA_SPACE = "linspace"                 # "linspace" ou "geomspace"

@@ -234,10 +234,10 @@ def get_datasets():
     ]
     if cfg.RANDOM_FLIP: train_transform.insert(2, transforms.RandomHorizontalFlip())
     
-    root = os.path.join(cfg.DATA_DIR, 'dataset_v2')
-    init_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, domain='HES', transform=cmp(train_transform))
-    final_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, domain='CD30', transform=cmp(train_transform))
-    
+    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
+    # On charge les paires HES/CD30 du split 'train'
+    init_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
+    final_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
     mean_final = torch.tensor(0.)
     var_final = torch.tensor(1. * 10 ** 3)
     return init_ds, final_ds, mean_final, var_final
