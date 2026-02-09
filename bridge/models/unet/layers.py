@@ -144,7 +144,7 @@ def checkpoint(func, inputs, params, flag):
 
 
 class CheckpointFunction(th.autograd.Function):
-     # Mécanisme interne pour faire du checkpointing (économie mémoire).
+    # Mécanisme interne pour faire du checkpointing (économie mémoire).
     @staticmethod
     def forward(ctx, run_function, length, *args):
         ctx.run_function = run_function
@@ -261,17 +261,17 @@ normalement avg_pool_nd attend dims en premier. C’est peut-être un bug/copie.
 """
 
 class ResBlock(TimestepBlock):
-    """
-    A residual block that can optionally change the number of channels.
-    :param channels: the number of input channels.
-    :param emb_channels: the number of timestep embedding channels.
-    :param dropout: the rate of dropout.
-    :param out_channels: if specified, the number of out channels.
-    :param use_conv: if True and out_channels is specified, use a spatial
-        convolution instead of a smaller 1x1 convolution to change the
-        channels in the skip connection.
-    :param dims: determines if the signal is 1D, 2D, or 3D.
-    :param use_checkpoint: if True, use gradient checkpointing on this module.
+    """ 
+    Bloc "résiduel" (ResNet-style), utilisé partout dans le UNet.
+
+    Idée pour débutant :
+    - on applique quelques transformations à l'entrée x
+    - MAIS on ajoute aussi x à la fin ("raccourci", skip connection)
+    → ça aide le réseau à apprendre sans se perdre (plus stable, plus profond)
+
+    Particularité ici :
+    - le bloc est "conditionné" par le temps (emb),
+      donc son comportement dépend de l'étape timesteps.
     """
 
     def __init__(
@@ -286,19 +286,35 @@ class ResBlock(TimestepBlock):
         use_checkpoint=False,
     ):
         super().__init__()
+
+          # Informations de base (surtout utile pour comprendre/debug)
         self.channels = channels
         self.emb_channels = emb_channels
         self.dropout = dropout
+
+         # Le bloc peut garder le même nombre de canaux ou en changer
         self.out_channels = out_channels or channels
+
+        # Options d'architecture
         self.use_conv = use_conv
         self.use_checkpoint = use_checkpoint
         self.use_scale_shift_norm = use_scale_shift_norm
 
+        # Partie 1 : traitement principal de x (normaliser + activer + convolution)
+        # Concept :
+        # - normalisation : stabilise l'entraînement
+        # - activation : rend le modèle non-linéaire
+        # - convolution : extrait / transforme des motifs (features)
         self.in_layers = nn.Sequential(
             normalization(channels),
             SiLU(),
             conv_nd(dims, channels, self.out_channels, 3, padding=1),
         )
+
+        # Partie 2 : transformation de l'embedding temps (emb)
+        # Concept :
+        # - on convertit le "temps" en informations utilisables pour moduler le bloc
+        # - si use_scale_shift_norm=True, on produit 2 infos (scale et shift)
         self.emb_layers = nn.Sequential(
             SiLU(),
             linear(
@@ -306,6 +322,12 @@ class ResBlock(TimestepBlock):
                 2 * self.out_channels if use_scale_shift_norm else self.out_channels,
             ),
         )
+
+        # Partie 3 : sortie du bloc (après injection de l'information temps)
+        # Concept :
+        # - on affine les features
+        # - dropout : limite l'overfitting
+        # - zero_module(...) : initialise la dernière conv à 0 pour démarrer doucement
         self.out_layers = nn.Sequential(
             normalization(self.out_channels),
             SiLU(),
@@ -315,44 +337,68 @@ class ResBlock(TimestepBlock):
             ),
         )
 
+        # Skip connection (raccourci) :
+        # Concept :
+        # - si le nombre de canaux ne change pas : on peut ajouter x directement
+        # - sinon : on transforme x pour qu'il ait la même forme que h avant de les additionner
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
         elif use_conv:
+             # Option : utiliser une convolution "classique" (3x3) pour adapter les canaux
             self.skip_connection = conv_nd(
                 dims, channels, self.out_channels, 3, padding=1
             )
         else:
+             # Option : convolution 1x1 (plus simple) pour adapter uniquement les canaux
             self.skip_connection = conv_nd(dims, channels, self.out_channels, 1)
 
     def forward(self, x, emb):
         """
-        Apply the block to a Tensor, conditioned on a timestep embedding.
-        :param x: an [N x C x ...] Tensor of features.
-        :param emb: an [N x emb_channels] Tensor of timestep embeddings.
-        :return: an [N x C x ...] Tensor of outputs.
+        Applique le bloc à x en tenant compte de emb (le temps).
+        Concept :
+        - si use_checkpoint=True : on économise de la mémoire à l'entraînement
+          (mais c'est un peu plus lent)
         """
         return checkpoint(
             self._forward, (x, emb), self.parameters(), self.use_checkpoint
         )
 
     def _forward(self, x, emb):
+         # Transforme x (chemin principal)
         h = self.in_layers(x)
+        
+         # Transforme emb pour influencer le bloc
         emb_out = self.emb_layers(emb).type(h.dtype)
+
+        # On adapte la forme de emb_out pour pouvoir l'appliquer sur une image/feature map
+        # (ex: passer de [N, C] à [N, C, 1, 1])
         while len(emb_out.shape) < len(h.shape):
             emb_out = emb_out[..., None]
         if self.use_scale_shift_norm:
+             # Mode "scale/shift" :
+            # Concept : emb ne s'ajoute pas juste, il "modifie" la normalisation
+            # (souvent plus puissant)
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
             scale, shift = th.chunk(emb_out, 2, dim=1)
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
+              # Mode simple :
+            # Concept : on injecte le temps en l'ajoutant aux features
             h = h + emb_out
             h = self.out_layers(h)
+         # Résiduel : on ajoute le raccourci (skip connection)
         return self.skip_connection(x) + h
 
 
 class AttentionBlock(nn.Module):
     """
+    Bloc d'attention.
+    Idée pour débutant :
+    - une convolution "voit" surtout localement (autour d'un pixel).
+    - l'attention permet à une zone de l'image de "regarder" toutes les autres zones.
+    → utile pour capturer des relations à longue distance (motifs éloignés).
+
     An attention block that allows spatial positions to attend to each other.
     Originally ported from here, but adapted to the N-d case.
     https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L66.
@@ -363,62 +409,80 @@ class AttentionBlock(nn.Module):
         self.channels = channels
         self.num_heads = num_heads
         self.use_checkpoint = use_checkpoint
-
+        # Normalisation avant l'attention (stabilité)
         self.norm = normalization(channels)
+         # On crée en une seule couche :
+        # Q = Query, K = Key, V = Value (les 3 ingrédients de l'attention)
         self.qkv = conv_nd(1, channels, channels * 3, 1)
+        # Calcul de l'attention
         self.attention = QKVAttention()
+         # Projection finale, initialisée à 0 pour démarrer doucement
         self.proj_out = zero_module(conv_nd(1, channels, channels, 1))
 
     def forward(self, x):
+          # Même idée que plus haut : checkpoint optionnel pour économiser de la mémoire
         return checkpoint(self._forward, (x,), self.parameters(), self.use_checkpoint)
 
     def _forward(self, x):
+        # b = batch size, c = channels, spatial = dimensions spatiales (H,W) ou autre
         b, c, *spatial = x.shape
+         # On "aplatit" l'image pour la voir comme une suite de positions
+        # (T = nombre de positions = H*W)
         x = x.reshape(b, c, -1)
+        # Prépare Q, K, V
         qkv = self.qkv(self.norm(x))
+        # Sépare en plusieurs têtes (multi-head attention)
         qkv = qkv.reshape(b * self.num_heads, -1, qkv.shape[2])
+          # Calcule l'attention : mélange les infos entre positions
         h = self.attention(qkv)
+         # Remet la forme batch normale
         h = h.reshape(b, -1, h.shape[-1])
+         # Projection de sortie
         h = self.proj_out(h)
+        # Skip connection : on ajoute l'entrée à la sortie (stabilité)
         return (x + h).reshape(b, c, *spatial)
 
 
 class QKVAttention(nn.Module):
     """
-    A module which performs QKV attention.
+    Moteur de calcul de l'attention (à partir de Q, K, V).
+    Idée pour débutant :
+    - Q (query) : "qu'est-ce que je cherche ?"
+    - K (key)   : "qu'est-ce que je représente ?"
+    - V (value) : "quelle info je donne ?"
+    L'attention calcule quelles positions doivent influencer les autres.
     """
 
     def forward(self, qkv):
         """
-        Apply QKV attention.
-        :param qkv: an [N x (C * 3) x T] tensor of Qs, Ks, and Vs.
-        :return: an [N x C x T] tensor after attention.
+        Entrée :
+        - qkv contient Q, K, V concaténés.
+        Sortie :
+        - une nouvelle représentation où chaque position est un mélange
+          d’informations venant d’autres positions.
         """
+        # On coupe qkv en 3 morceaux : Q, K, 
         ch = qkv.shape[1] // 3
         q, k, v = th.split(qkv, ch, dim=1)
+         # Normalisation pour stabiliser les produits (évite des valeurs trop grandes)
         scale = 1 / math.sqrt(math.sqrt(ch))
+         # Calcule la "similarité" entre toutes les positions (poids d'attention)
         weight = th.einsum(
             "bct,bcs->bts", q * scale, k * scale
-        )  # More stable with f16 than dividing afterwards
+        )  
+        # Transforme ces similarités en probabilités (somme = 1)
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
+        # Combine les valeurs V selon ces poids
         return th.einsum("bts,bcs->bct", weight, v)
 
     @staticmethod
     def count_flops(model, _x, y):
         """
-        A counter for the `thop` package to count the operations in an
-        attention operation.
-        Meant to be used like:
-            macs, params = thop.profile(
-                model,
-                inputs=(inputs, timestamps),
-                custom_ops={QKVAttention: QKVAttention.count_flops},
-            )
+        Sert uniquement à estimer le coût de calcul (nombre d'opérations).
+        Utile pour du profiling (mesurer la lourdeur du modèle).
         """
         b, c, *spatial = y[0].shape
         num_spatial = int(np.prod(spatial))
-        # We perform two matmuls with the same number of ops.
-        # The first computes the weight matrix, the second computes
-        # the combination of the value vectors.
+        #L'attention est coûteuse car elle compare toutes les positions entre elles.
         matmul_ops = 2 * b * (num_spatial ** 2) * c
         model.total_ops += th.DoubleTensor([matmul_ops])
