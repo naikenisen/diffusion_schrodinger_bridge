@@ -129,5 +129,6 @@ dmypy.json
 .pyre/
 
 /dataset_v2
+/dataset_v3
 .venv
 /results
