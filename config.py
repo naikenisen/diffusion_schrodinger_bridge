@@ -20,7 +20,8 @@ USE_CHECKPOINT = False
 USE_SCALE_SHIFT_NORM = True
 
 # ----- Device -----
-DEVICE = "cuda"                          # "cpu" si pas de GPU
+import torch
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"  # Auto-detect GPU availability
 DATAPARALLEL = True
 NUM_WORKERS = 1
 PIN_MEMORY = True

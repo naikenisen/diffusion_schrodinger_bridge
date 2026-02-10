@@ -123,6 +123,7 @@ class TimestepBlock(nn.Module):
 
     @abstractmethod
     def forward(self, x, emb):
+        pass
 
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):

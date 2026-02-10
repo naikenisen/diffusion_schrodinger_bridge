@@ -11,7 +11,8 @@ from PIL import Image
 import config as cfg
 from models.unet import UNetModel
 from dataloader import dataloader
-
+# il faudrait produire des image HES, CD30 virtual et et CD30 real + ecrire legende deesous image avec matplotlib
+# revérifier si il va bien infer. py va bien de HES en entrée  vers CD30 en sortie 
 def grad_gauss(x, m, var):
     """
     Concept :
@@ -110,7 +111,7 @@ def get_test_dataloader():
         transforms.ToTensor(),
     ])
     
-    root = os.path.join(cfg.DATA_DIR, 'dataset_v2')
+    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
     test_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, domain='HES', transform=test_transform)
 
     loader = DataLoader(test_ds, batch_size=cfg.BATCH_SIZE, shuffle=False, num_workers=cfg.NUM_WORKERS)
