@@ -133,3 +133,4 @@ dmypy.json
 /dataset_v4
 .venv
 /results
+/checkpoints
