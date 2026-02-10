@@ -46,3 +46,26 @@ class dataloader(Dataset):
         hes_img = self.transform(hes_img)
         cd30_img = self.transform(cd30_img)
         return hes_img, cd30_img, fname
+
+def get_datasets():
+    """
+    Charge deux datasets séparés :
+    - init_ds  : images de départ (HES)
+    - final_ds : images cibles (CD30)
+
+    Concept :
+    - on ne donne pas la paire (HES, CD30) directement
+    - on a deux domaines séparés, et le bridge apprend à passer de l'un à l'autre.
+    """
+    train_transform = [
+        transforms.Resize(cfg.IMAGE_SIZE), transforms.CenterCrop(cfg.IMAGE_SIZE),
+        transforms.ToTensor()
+    ]
+    if cfg.RANDOM_FLIP: train_transform.insert(2, transforms.RandomHorizontalFlip())
+    
+    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
+    init_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
+    final_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
+    mean_final = torch.tensor(0.)
+    var_final = torch.tensor(1. * 10 ** 3)
+    return init_ds, final_ds, mean_final, var_final

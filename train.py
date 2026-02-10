@@ -16,7 +16,7 @@ from accelerate import Accelerator
 from pytorch_lightning.loggers import CSVLogger as _CSVLogger
 import config as cfg
 from models.unet import UNetModel
-from dataloader import dataloader
+from dataloader import dataloader, get_datasets
 
 cmp = lambda x: transforms.Compose([*x])
 
@@ -239,29 +239,6 @@ def get_models():
     }
     return UNetModel(**kwargs), UNetModel(**kwargs)
 
-def get_datasets():
-    """
-    Charge deux datasets séparés :
-    - init_ds  : images de départ (HES)
-    - final_ds : images cibles (CD30)
-
-    Concept :
-    - on ne donne pas la paire (HES, CD30) directement
-    - on a deux domaines séparés, et le bridge apprend à passer de l'un à l'autre.
-    """
-    train_transform = [
-        transforms.Resize(cfg.IMAGE_SIZE), transforms.CenterCrop(cfg.IMAGE_SIZE),
-        transforms.ToTensor()
-    ]
-    if cfg.RANDOM_FLIP: train_transform.insert(2, transforms.RandomHorizontalFlip())
-    
-    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
-    init_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
-    final_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
-    mean_final = torch.tensor(0.)
-    var_final = torch.tensor(1. * 10 ** 3)
-    return init_ds, final_ds, mean_final, var_final
-
 class IPFTrainer(torch.nn.Module):
     """
     Classe de base qui prépare TOUT ce qu'il faut pour l'entraînement.
@@ -273,7 +250,7 @@ class IPFTrainer(torch.nn.Module):
     """
     def __init__(self):
         super().__init__()
-        self.accelerator = Accelerator(mixed_precision="no", cpu=(cfg.DEVICE == 'cpu'))
+        self.accelerator = Accelerator(mixed_precision="no", cpu= cfg.DEVICE)
         self.device = self.accelerator.device
         self.n_ipf = cfg.N_IPF
         self.num_steps = cfg.NUM_STEPS
