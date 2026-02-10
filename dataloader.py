@@ -16,37 +16,25 @@ class dataloader(Dataset):
     NB : La doc decrit des paires HES↔CD30 (même nom de fichier dans deux dossiers),
     mais cette classe, telle qu’ecrite, charge un seul domaine à la fois (domain='HES' ou 'CD30').
     """
-    def __init__(self, root, image_size=256, transform=None, split='train'):
+    def __init__(self, root, image_size=256, split='train'):
         super().__init__()
         self.root = root
         self.image_size = image_size
         hes_dir = os.path.join(root, split, 'HES')
         cd30_dir = os.path.join(root, split, 'CD30')
 
-        if not os.path.isdir(hes_dir) or not os.path.isdir(cd30_dir):
-            raise RuntimeError(
-                f"Dossiers {hes_dir} ou {cd30_dir} introuvables. Verifiez dataset_v4/{split}/HES et dataset_v4/{split}/CD30."
-            )
-
         hes_files = set(os.listdir(hes_dir))
         cd30_files = set(os.listdir(cd30_dir))
         paired_files = sorted(list(hes_files & cd30_files))
-        if len(paired_files) == 0:
-            raise RuntimeError(
-                f"Aucune paire trouvee entre {hes_dir} et {cd30_dir}. "
-                f"Verifiez que les noms de fichiers correspondent."
-            )
+        
         self.paired_files = paired_files
         self.hes_dir = hes_dir
         self.cd30_dir = cd30_dir
-
-        if transform is not None:
-            self.transform = transform
-        else:
-            self.transform = transforms.Compose([
-                transforms.Resize(image_size),
-                transforms.CenterCrop(image_size),
-                transforms.ToTensor(),
+    
+        self.transform = transforms.Compose([
+            transforms.Resize(image_size),
+            transforms.CenterCrop(image_size),
+            transforms.ToTensor(),
             ])
 
         print(f"[HES_CD30] {len(self.paired_files)} paires HES/CD30 trouvees dans {split}.")
