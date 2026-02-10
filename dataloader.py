@@ -5,6 +5,8 @@ from torch.utils.data import Dataset
 from PIL import Image
 import torchvision.transforms as transforms
 import torch
+import config as cfg
+cmp = lambda x: transforms.Compose([*x])
 
 class dataloader(Dataset):
     """
@@ -25,12 +27,6 @@ class dataloader(Dataset):
         self.paired_files = paired_files
         self.hes_dir = hes_dir
         self.cd30_dir = cd30_dir
-    
-        self.transform = transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            ])
 
         print(f"[HES_CD30] {len(self.paired_files)} paires HES/CD30 trouvees dans {split}.")
 
@@ -58,10 +54,9 @@ def get_datasets():
     - on a deux domaines séparés, et le bridge apprend à passer de l'un à l'autre.
     """
     train_transform = [
-        transforms.Resize(cfg.IMAGE_SIZE), transforms.CenterCrop(cfg.IMAGE_SIZE),
+        transforms.Resize(cfg.IMAGE_SIZE),
         transforms.ToTensor()
     ]
-    if cfg.RANDOM_FLIP: train_transform.insert(2, transforms.RandomHorizontalFlip())
     
     root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
     init_ds = dataloader(root, image_size=cfg.IMAGE_SIZE, transform=cmp(train_transform), split='train')
