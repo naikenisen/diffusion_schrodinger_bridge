@@ -4,9 +4,6 @@ import time
 import random
 import datetime
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from itertools import repeat
 import torch
 import torch.nn as nn
@@ -401,7 +398,6 @@ class IPFTrainer(torch.nn.Module):
             self.ipf_step('b', n)
             self.ipf_step('f', n)
 
-if __name__ == '__main__':
-    print('=== DSB Training ===')
-    trainer = IPFTrainer()
-    trainer.train()
+print('debut entrainement')
+trainer = IPFTrainer()
+trainer.train()
