@@ -85,10 +85,8 @@ def get_model(device):
     attention_resolutions=tuple(attention_ds),
     dropout=cfg.DROPOUT,
     channel_mult= channel_mult,
-    use_checkpoint=cfg.USE_CHECKPOINT,
     num_heads=cfg.NUM_HEADS,
-    num_heads_upsample=cfg.NUM_HEADS_UPSAMPLE,
-    use_scale_shift_norm=cfg.USE_SCALE_SHIFT_NORM)
+    num_heads_upsample=cfg.NUM_HEADS_UPSAMPLE)
 
     return net.to(device)
 
