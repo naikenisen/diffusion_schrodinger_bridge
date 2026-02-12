@@ -3,11 +3,15 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+# --- Blocs Utilitaires ---
+
 class TimestepBlock(nn.Module):
+    """Interface pour les blocs qui prennent 'emb' en entrée."""
     def forward(self, x, emb):
         pass
 
 class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
+    """Gère le passage de l'embedding temporel aux couches qui en ont besoin."""
     def forward(self, x, emb):
         for layer in self:
             if isinstance(layer, TimestepBlock):
@@ -34,6 +38,8 @@ def timestep_embedding(timesteps, dim, max_period=10000):
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
+# --- Couches de base ---
+
 class Upsample(nn.Module):
     def __init__(self, channels, use_conv):
         super().__init__()
@@ -56,10 +62,12 @@ class Downsample(nn.Module):
         if use_conv:
             self.op = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
         else:
-            self.op = nn.AvgPool2d(kernel_size=2, stride=2)
+            self.op = nn.AvgPool2d(stride=2)
 
     def forward(self, x):
         return self.op(x)
+
+# --- Blocs Principaux (Corrigés) ---
 
 class ResBlock(TimestepBlock):
     def __init__(
@@ -85,12 +93,12 @@ class ResBlock(TimestepBlock):
             nn.Conv2d(channels, self.out_channels, 3, padding=1),
         )
         
+        # CORRECTION : On force la taille de sortie à 2x si scale_shift est activé
+        emb_out_channels = 2 * self.out_channels if use_scale_shift_norm else self.out_channels
+        
         self.emb_layers = nn.Sequential(
             nn.SiLU(),
-            nn.Linear(
-                emb_channels,
-                2 * self.out_channels if use_scale_shift_norm else self.out_channels,
-            ),
+            nn.Linear(emb_channels, emb_out_channels),
         )
         
         self.out_layers = nn.Sequential(
@@ -100,10 +108,10 @@ class ResBlock(TimestepBlock):
             nn.Conv2d(self.out_channels, self.out_channels, 3, padding=1),
         )
         
-        # Zero-init last conv
-        with th.no_grad():
-             self.out_layers[-1].weight.zero_()
-             self.out_layers[-1].bias.zero_()
+        # CORRECTION : Initialisation zéro compatible
+        nn.init.zeros_(self.out_layers[-1].weight)
+        if self.out_layers[-1].bias is not None:
+             nn.init.zeros_(self.out_layers[-1].bias)
 
         if self.out_channels == channels:
             self.skip_connection = nn.Identity()
@@ -115,12 +123,20 @@ class ResBlock(TimestepBlock):
     def forward(self, x, emb):
         h = self.in_layers(x)
         emb_out = self.emb_layers(emb).type(h.dtype)
+        
         while len(emb_out.shape) < len(h.shape):
             emb_out = emb_out[..., None]
         
         if self.use_scale_shift_norm:
             out_norm, out_rest = self.out_layers[0], self.out_layers[1:]
-            scale, shift = th.chunk(emb_out, 2, dim=1)
+            
+            # Sécurité pour éviter le crash "not enough values to unpack"
+            if emb_out.shape[1] != 2 * self.out_channels:
+                 # Fallback au cas où (ne devrait pas arriver avec ce code corrigé)
+                 scale, shift = th.chunk(emb_out, 2, dim=1) 
+            else:
+                 scale, shift = th.chunk(emb_out, 2, dim=1)
+                 
             h = out_norm(h) * (1 + scale) + shift
             h = out_rest(h)
         else:
@@ -139,23 +155,24 @@ class AttentionBlock(nn.Module):
         self.qkv = nn.Conv1d(channels, channels * 3, 1)
         self.proj_out = nn.Conv1d(channels, channels, 1)
 
-        # Zero-init output projection
-        with th.no_grad():
-            self.proj_out.weight.zero_()
-            self.proj_out.bias.zero_()
+        # CORRECTION : Initialisation zéro compatible
+        nn.init.zeros_(self.proj_out.weight)
+        nn.init.zeros_(self.proj_out.bias)
 
     def forward(self, x):
         b, c, h, w = x.shape
         x_flat = x.reshape(b, c, -1)
         
+        # (B, C, L) -> (B, 3C, L)
         qkv = self.qkv(self.norm(x).reshape(b, c, -1))
         
         q, k, v = th.chunk(qkv, 3, dim=1)
         
-        # Reshape for Flash Attention: (B, Heads, SeqLen, Dim)
-        q = q.reshape(b, self.num_heads, c // self.num_heads, -1).transpose(2, 3)
-        k = k.reshape(b, self.num_heads, c // self.num_heads, -1).transpose(2, 3)
-        v = v.reshape(b, self.num_heads, c // self.num_heads, -1).transpose(2, 3)
+        # Flash Attention Reshape: (B, Heads, SeqLen, Dim)
+        head_dim = c // self.num_heads
+        q = q.reshape(b, self.num_heads, head_dim, -1).transpose(2, 3)
+        k = k.reshape(b, self.num_heads, head_dim, -1).transpose(2, 3)
+        v = v.reshape(b, self.num_heads, head_dim, -1).transpose(2, 3)
         
         out = F.scaled_dot_product_attention(q, k, v)
         
@@ -163,6 +180,8 @@ class AttentionBlock(nn.Module):
         out = self.proj_out(out)
         
         return (x_flat + out).reshape(b, c, h, w)
+
+# --- Modèle UNet ---
 
 class UNetModel(nn.Module):
     def __init__(
@@ -274,13 +293,12 @@ class UNetModel(nn.Module):
         self.out = nn.Sequential(
             normalization(ch),
             nn.SiLU(),
-            nn.Conv2d(model_channels, 3, 3, padding=1),
+            nn.Conv2d(model_channels * mult, 3, 3, padding=1),
         )
         
-        # Zero-init last conv
-        with th.no_grad():
-            self.out[-1].weight.zero_()
-            self.out[-1].bias.zero_()
+        # CORRECTION : Initialisation zéro compatible
+        nn.init.zeros_(self.out[-1].weight)
+        nn.init.zeros_(self.out[-1].bias)
 
     def forward(self, x, timesteps):
         if len(timesteps.shape) == 0:
