@@ -29,14 +29,14 @@ PIN_MEMORY = True
 USE_FP16 = True  # Active le mode fp16/mixed precision pour accélérer l'entraînement sur V100
 
 # ----- Entraînement -----
-BATCH_SIZE = 4
+BATCH_SIZE = 32
 LR = 1e-4
 NUM_ITER = 50000
 N_IPF = 20
 N_IPF_INIT = 1
-CACHE_NPAR = 4
-NUM_CACHE_BATCHES = 1
-CACHE_REFRESH_STRIDE = 100
+CACHE_NPAR = 32
+NUM_CACHE_BATCHES = 10
+CACHE_REFRESH_STRIDE = 300
 USE_PREV_NET = True
 MEAN_MATCH = True
 
