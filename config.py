@@ -22,7 +22,7 @@ import torch
 # ----- Device -----
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DATAPARALLEL = True
-NUM_WORKERS = 8  # Augmenté pour accélérer le dataloader
+NUM_WORKERS = 16  # Augmenté pour accélérer le dataloader
 PIN_MEMORY = True
 
 # ----- Mixed Precision (fp16) -----
