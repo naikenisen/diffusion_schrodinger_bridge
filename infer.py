@@ -13,15 +13,6 @@ from models.unet import UNetModel
 from dataloader import dataloader
 # il faudrait produire des image HES, CD30 virtual et et CD30 real + ecrire legende deesous image avec matplotlib
 # revérifier si il va bien infer. py va bien de HES en entrée  vers CD30 en sortie 
-def grad_gauss(x, m, var):
-    """
-    Concept :
-    - gradient d'une distribution Gaussienne
-    - sert ici à pousser les échantillons vers une distribution cible simple
-    (utile pour initialiser / guider certaines étapes)
-    """
-    return -(x - m) / var
-
 
 class Langevin(torch.nn.Module):
     """
@@ -165,10 +156,7 @@ def run_inference(ckpt_path, output_dir='./results'):
 
     print(f"Inference done. Results saved in {output_dir}")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--ckpt', type=str, required=True, help='Path to the model checkpoint (.ckpt)')
-    parser.add_argument('--out', type=str, default='./results', help='Directory to save results')
-    args = parser.parse_args()
+checkpoint = './checkpoints/bridge_epoch_10.ckpt' # Exemple de chemin vers un checkpoint
+out_dir = './results' # Exemple de répertoire de sortie
 
-    run_inference(args.ckpt, args.out)
+run_inference(checkpoint, out_dir)
