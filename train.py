@@ -240,22 +240,17 @@ def get_models():
     return UNetModel(**kwargs), UNetModel(**kwargs)
 
 class IPFTrainer(torch.nn.Module):
-    """
-    Classe de base qui prépare TOUT ce qu'il faut pour l'entraînement.
-
-    Concept IPF (Iterative Proportional Fitting) :
-    - on alterne l'entraînement du réseau backward et forward
-    - chaque réseau utilise l'autre réseau comme "générateur de trajectoires"
-      pour créer des données supervisées (CacheLoader).
-    """
     def __init__(self):
         super().__init__()
+        # 1. On garde mixed_precision="fp16" ici, c'est lui le chef.
         self.accelerator = Accelerator(mixed_precision="fp16", cpu=False)
         self.device = self.accelerator.device
         self.n_ipf = cfg.N_IPF
         self.num_steps = cfg.NUM_STEPS
         self.batch_size = cfg.BATCH_SIZE
         self.lr = cfg.LR
+
+
         n = self.num_steps // 2
         gamma_half = np.linspace(cfg.GAMMA_MIN, cfg.GAMMA_MAX, n) if cfg.GAMMA_SPACE == 'linspace' else np.geomspace(cfg.GAMMA_MIN, cfg.GAMMA_MAX, n)
         gammas = np.concatenate([gamma_half, np.flip(gamma_half)])
@@ -275,13 +270,13 @@ class IPFTrainer(torch.nn.Module):
         self.net['b'] = self.accelerator.prepare(self.net['b'])
         self.optimizer['f'] = self.accelerator.prepare(self.optimizer['f'])
         self.optimizer['b'] = self.accelerator.prepare(self.optimizer['b'])
-        if self.use_fp16:
-            self.scaler = GradScaler('cuda')
         if cfg.EMA:
             self.ema_helpers = {
                 'f': EMAHelper(mu=cfg.EMA_RATE, device=self.device),
                 'b': EMAHelper(mu=cfg.EMA_RATE, device=self.device)
             }
+            # Note: Si tu utilises accelerate, l'accès aux paramètres peut nécessiter .module si c'est wrappé
+            # Mais EMAHelper gère déjà DataParallel, donc ça devrait aller.
             self.ema_helpers['f'].register(self.net['f'])
             self.ema_helpers['b'].register(self.net['b'])
 
@@ -302,8 +297,8 @@ class IPFTrainer(torch.nn.Module):
         time_sampler = torch.distributions.categorical.Categorical(prob_vec)
         dummy_batch = next(self.cache_init_dl)[0]
         self.langevin = Langevin(self.num_steps, dummy_batch.shape[1:], gammas, time_sampler, 
-                                 device=self.device, mean_final=self.mean_final, var_final=self.var_final, 
-                                 mean_match=cfg.MEAN_MATCH)
+                                device=self.device, mean_final=self.mean_final, var_final=self.var_final, 
+                                mean_match=cfg.MEAN_MATCH)
         self.logger = _CSVLogger(cfg.CSV_LOG_DIR, name='logs')
         os.makedirs('./checkpoints', exist_ok=True)
 
@@ -341,7 +336,6 @@ class IPFTrainer(torch.nn.Module):
     def ipf_step(self, fb, n):
         print(f"Starting IPF step {n} for direction {fb}")
         train_dl = self.new_cacheloader(fb, n)
-        # Ne plus préparer net[fb] et optimizer[fb] ici, déjà fait dans __init__
 
         import time as _time
         for i in tqdm(range(cfg.NUM_ITER)):
@@ -350,46 +344,39 @@ class IPFTrainer(torch.nn.Module):
             t1 = _time.time()
             eval_steps = self.T - steps_expanded.to(self.device)
             t2 = _time.time()
+            # Note: avec accelerate.prepare(dataloader), les données sont souvent déjà sur le bon device
+            # mais ça ne fait pas de mal de s'en assurer.
             x = x.to(self.device)
             out = out.to(self.device)
             t3 = _time.time()
 
             # Forward
             t4 = _time.time()
-            if self.use_fp16:
-                with autocast('cuda'):
-                    if cfg.MEAN_MATCH:
-                        pred = self.net[fb](x, eval_steps) - x
-                    else:
-                        pred = self.net[fb](x, eval_steps)
-                    loss = F.mse_loss(pred, out)
-                t5 = _time.time()
-                # Backward
-                self.scaler.scale(loss).backward()
-                t6 = _time.time()
-                # Grad clipping
-                if cfg.GRAD_CLIPPING:
-                    self.scaler.unscale_(self.optimizer[fb])
-                    torch.nn.utils.clip_grad_norm_(self.net[fb].parameters(), cfg.GRAD_CLIP)
-                # Optimizer step
-                self.scaler.step(self.optimizer[fb])
-                self.scaler.update()
-                self.optimizer[fb].zero_grad()
-                t7 = _time.time()
-            else:
+            
+            # --- CORRECTION MAJEURE ICI ---
+            # On utilise le contexte autocast d'accelerate
+            with self.accelerator.autocast():
                 if cfg.MEAN_MATCH:
                     pred = self.net[fb](x, eval_steps) - x
                 else:
                     pred = self.net[fb](x, eval_steps)
                 loss = F.mse_loss(pred, out)
-                t5 = _time.time()
-                self.accelerator.backward(loss)
-                t6 = _time.time()
-                if cfg.GRAD_CLIPPING:
-                    torch.nn.utils.clip_grad_norm_(self.net[fb].parameters(), cfg.GRAD_CLIP)
-                self.optimizer[fb].step()
-                self.optimizer[fb].zero_grad()
-                t7 = _time.time()
+            
+            t5 = _time.time()
+            
+            # Backward géré par accelerate (qui gère le scaling en interne)
+            self.accelerator.backward(loss)
+            
+            t6 = _time.time()
+            
+            # Clipping et Step
+            if cfg.GRAD_CLIPPING:
+                self.accelerator.clip_grad_norm_(self.net[fb].parameters(), cfg.GRAD_CLIP)
+            
+            self.optimizer[fb].step()
+            self.optimizer[fb].zero_grad()
+            t7 = _time.time()
+            # ------------------------------
 
             # EMA
             t8 = _time.time()
