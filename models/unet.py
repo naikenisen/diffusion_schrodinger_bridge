@@ -8,27 +8,24 @@ from .layers import *
 from .layers import *
 
 class UNetModel(nn.Module):
-
     def __init__(
         self,
-        in_channels,
         model_channels,
-        out_channels,
         num_res_blocks,
         attention_resolutions,
-        dropout=0,
+        dropout: float = 0,
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=2,
         num_classes=None,
-        num_heads=1,
         num_heads_upsample=-1,
         use_scale_shift_norm=True,
     ):
         super().__init__()
 
-        if num_heads_upsample == -1:
-            num_heads_upsample = num_heads
+        num_heads = 2
+        in_channels = 3
+        out_channels = 3
         self.locals = [ in_channels,
                         model_channels,
                         out_channels,
@@ -92,13 +89,13 @@ class UNetModel(nn.Module):
                     layers.append(
                         AttentionBlock(
                             ch, num_heads=num_heads
-                        )
+                        )  # type: ignore
                     )
-                self.input_blocks.append(TimestepEmbedSequential(*layers))
+                self.input_blocks.append(TimestepEmbedSequential(*layers))  # type: ignore
                 input_block_chans.append(ch)
             if level != len(channel_mult) - 1:
                 self.input_blocks.append(
-                    TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims))
+                    TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims))  # type: ignore
                 )
                 input_block_chans.append(ch)
                 ds *= 2
@@ -119,7 +116,7 @@ class UNetModel(nn.Module):
                 dims=dims,
                 use_scale_shift_norm=use_scale_shift_norm,
             ),
-        )
+        )  # type: ignore
 
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
@@ -140,12 +137,12 @@ class UNetModel(nn.Module):
                         AttentionBlock(
                             ch,
                             num_heads=num_heads_upsample,
-                        )
+                        )  # type: ignore
                     )
                 if level and i == num_res_blocks:
-                    layers.append(Upsample(ch, conv_resample, dims=dims))
+                    layers.append(Upsample(ch, conv_resample, dims=dims))  # type: ignore
                     ds //= 2
-                self.output_blocks.append(TimestepEmbedSequential(*layers))
+                self.output_blocks.append(TimestepEmbedSequential(*layers))  # type: ignore
 
         self.out = nn.Sequential(
             normalization(ch),
@@ -203,7 +200,7 @@ class UNetModel(nn.Module):
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
         result = dict(down=[], up=[])
-        h = x#.type(self.inner_dtype)
+        h = x.type(self.inner_dtype)
         for module in self.input_blocks:
             h = module(h, emb)
             hs.append(h)

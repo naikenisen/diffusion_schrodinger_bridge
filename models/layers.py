@@ -4,24 +4,17 @@ import torch as th
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-
-# --- Fix pour le Mixed Precision ---
 import torch.cuda.amp as amp 
-# -----------------------------------
 
 class SiLU(nn.Module):
     def forward(self, x):
         return x * th.sigmoid(x)
 
-
 class GroupNorm32(nn.GroupNorm):
     def forward(self, x):
-        # Assure que le type correspond à celui des poids (fp16 ou fp32)
         return super().forward(x.to(self.weight.dtype))
 
-
 def conv_nd(dims, *args, **kwargs):
-
     if dims == 1:
         return nn.Conv1d(*args, **kwargs)
     elif dims == 2:
@@ -30,11 +23,8 @@ def conv_nd(dims, *args, **kwargs):
         return nn.Conv3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
-
 def linear(*args, **kwargs):
-
     return nn.Linear(*args, **kwargs)
-
 
 def avg_pool_nd(dims, *args, **kwargs):
     if dims == 1:
@@ -45,11 +35,9 @@ def avg_pool_nd(dims, *args, **kwargs):
         return nn.AvgPool3d(*args, **kwargs)
     raise ValueError(f"unsupported dimensions: {dims}")
 
-
 def update_ema(target_params, source_params, rate=0.99):
     for targ, src in zip(target_params, source_params):
         targ.detach().mul_(rate).add_(src, alpha=1 - rate)
-
 
 def zero_module(module, active=True):
     if active:
@@ -57,24 +45,18 @@ def zero_module(module, active=True):
             p.detach().zero_()
     return module
 
-
 def scale_module(module, scale):
     for p in module.parameters():
         p.detach().mul_(scale)
     return module
 
-
 def mean_flat(tensor):
     return tensor.mean(dim=list(range(1, len(tensor.shape))))
 
-
 def normalization(channels):
-
     return GroupNorm32(32, channels)
 
-
 def timestep_embedding(timesteps, dim, max_period=10000):
-
     half = dim // 2
     freqs = th.exp(
         -math.log(max_period) * th.arange(start=0, end=half, dtype=th.float32) / half
@@ -85,9 +67,7 @@ def timestep_embedding(timesteps, dim, max_period=10000):
         embedding = th.cat([embedding, th.zeros_like(embedding[:, :1])], dim=-1)
     return embedding
 
-
 def checkpoint(func, inputs, params, flag):
-
     if flag:
         args = tuple(inputs) + tuple(params)
         return CheckpointFunction.apply(func, len(inputs), *args)
@@ -108,15 +88,10 @@ class CheckpointFunction(th.autograd.Function):
     @staticmethod
     def backward(ctx, *output_grads):
         ctx.input_tensors = [x.detach().requires_grad_(True) for x in ctx.input_tensors]
-        
         with th.enable_grad():
-            # --- CORRECTIF APPLIQUÉ ICI ---
-            # On active l'autocast pour que le re-calcul (re-forward) utilise
-            # les bons types (FP16/FP32) et évite le crash.
             with amp.autocast(): 
                 shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
                 output_tensors = ctx.run_function(*shallow_copies)
-            # ------------------------------
             
         input_grads = th.autograd.grad(
             output_tensors,
@@ -131,7 +106,6 @@ class CheckpointFunction(th.autograd.Function):
 
 
 class TimestepBlock(nn.Module):
-
     @abstractmethod
     def forward(self, x, emb):
         pass
@@ -296,7 +270,7 @@ class QKVAttention(nn.Module):
         scale = 1 / math.sqrt(math.sqrt(ch))
         weight = th.einsum(
             "bct,bcs->bts", q * scale, k * scale
-        )  # More stable with f16 than dividing afterwards
+        )
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         return th.einsum("bts,bcs->bct", weight, v)
 
@@ -304,8 +278,5 @@ class QKVAttention(nn.Module):
     def count_flops(model, _x, y):
         b, c, *spatial = y[0].shape
         num_spatial = int(np.prod(spatial))
-        # We perform two matmuls with the same number of ops.
-        # The first computes the weight matrix, the second computes
-        # the combination of the value vectors.
         matmul_ops = 2 * b * (num_spatial ** 2) * c
         model.total_ops += th.DoubleTensor([matmul_ops])

@@ -1,73 +1,46 @@
-import os
-import sys
-import time
-import random
-import datetime
 import numpy as np
 from itertools import repeat
 import torch
-from torch.amp import autocast, GradScaler
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset
-import torchvision.utils as vutils
-import torchvision.transforms as transforms
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from accelerate import Accelerator
-from pytorch_lightning.loggers import CSVLogger as _CSVLogger
 import config as cfg
 from models.unet import UNetModel
-from dataloader import dataloader, get_datasets
-from models.utils import Langevin, CacheLoader, EMAHelper
-
-cmp = lambda x: transforms.Compose([*x])
+from dataloader import get_datasets
+from models.utils import Langevin, CacheLoader, EMAHelper, repeater
+import torchvision.transforms as transforms
 
 def get_models():
-    image_size = cfg.IMAGE_SIZE
-    if image_size == 256: channel_mult = (1, 1, 2, 2, 4, 4)
-    elif image_size == 64: channel_mult = (1, 2, 3, 4)
-    elif image_size == 32: channel_mult = (1, 2, 2, 2)
-    else: raise ValueError(f"unsupported image size: {image_size}")
-
-    attention_ds = [image_size // int(res) for res in cfg.ATTENTION_RESOLUTIONS.split(",")]
+    channel_mult = (1, 1, 2, 2, 4, 4)
+    attention_ds = [256 // int(res) for res in cfg.ATTENTION_RESOLUTIONS.split(",")]
 
     net_f = UNetModel(
-        in_channels=cfg.CHANNELS,
         model_channels=cfg.NUM_CHANNELS,
-        out_channels=cfg.CHANNELS,
         num_res_blocks=cfg.NUM_RES_BLOCKS,
         attention_resolutions=tuple(attention_ds),
         dropout=cfg.DROPOUT,
-        channel_mult=channel_mult,
-        num_heads=cfg.NUM_HEADS,
-        num_heads_upsample=cfg.NUM_HEADS_UPSAMPLE
+        channel_mult=channel_mult
     )
     net_b = UNetModel(
-        in_channels=cfg.CHANNELS,
         model_channels=cfg.NUM_CHANNELS,
-        out_channels=cfg.CHANNELS,
         num_res_blocks=cfg.NUM_RES_BLOCKS,
         attention_resolutions=tuple(attention_ds),
         dropout=cfg.DROPOUT,
-        channel_mult=channel_mult,
-        num_heads=cfg.NUM_HEADS,
-        num_heads_upsample=cfg.NUM_HEADS_UPSAMPLE
+        channel_mult=channel_mult
     )
-    
-    # NOTE: Pas de conversion .half() ici, Accelerate s'en charge.
     return net_f, net_b
 
 class IPFTrainer(torch.nn.Module):
     def __init__(self, transfer=True):
         super().__init__()
-        # 1. On garde mixed_precision="fp16" ici, c'est lui le chef.
         self.accelerator = Accelerator(mixed_precision="fp16", cpu=False)
         self.device = self.accelerator.device
         self.n_ipf = cfg.N_IPF
         self.num_steps = cfg.NUM_STEPS
         self.batch_size = cfg.BATCH_SIZE
         self.lr = cfg.LR
-
         self.transfer = transfer
 
 
@@ -111,8 +84,7 @@ class IPFTrainer(torch.nn.Module):
         time_sampler = torch.distributions.categorical.Categorical(prob_vec)
         dummy_batch = next(self.cache_init_dl)[0]
         self.langevin = Langevin(self.num_steps, dummy_batch.shape[1:], gammas, time_sampler, 
-                                device=self.device, mean_final=self.mean_final, var_final=self.var_final, 
-                                mean_match=cfg.MEAN_MATCH)
+                                device=self.device, mean_final=self.mean_final, var_final=self.var_final)
         os.makedirs('./checkpoints', exist_ok=True)
 
     def new_cacheloader(self, forward_or_backward, n, transfer=None):
@@ -158,12 +130,9 @@ class IPFTrainer(torch.nn.Module):
                 # Accelerate gère l'autocast ici si initialisé avec mixed_precision='fp16'
                 # Mais le contexte explicite ne fait pas de mal dans les boucles complexes.
                 with self.accelerator.autocast():
-                    if cfg.MEAN_MATCH:
-                        pred = self.net[fb](x, eval_steps) - x
-                    else:
-                        pred = self.net[fb](x, eval_steps)
-                    loss = F.mse_loss(pred, out)
-                
+                    pred = self.net[fb](x, eval_steps) - x
+                loss = F.mse_loss(pred, out)
+            
                 # Backward
                 self.accelerator.backward(loss)
                 
