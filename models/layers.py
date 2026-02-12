@@ -13,7 +13,8 @@ class SiLU(nn.Module):
 
 class GroupNorm32(nn.GroupNorm):
     def forward(self, x):
-        return super().forward(x.float()).type(x.dtype)
+        # Assure que le type correspond à celui des poids (fp16 ou fp32)
+        return super().forward(x.to(self.weight.dtype))
 
 
 def conv_nd(dims, *args, **kwargs):
