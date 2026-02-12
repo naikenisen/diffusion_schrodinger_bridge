@@ -314,7 +314,12 @@ class IPFTrainer(torch.nn.Module):
                              self.langevin, n, mean=self.mean_final, std=self.std_final, batch_size=cfg.CACHE_NPAR, 
                              device=self.device, dataloader_f=self.cache_final_dl, transfer=cfg.TRANSFER)
         
-        return repeater(self.accelerator.prepare(DataLoader(dl, batch_size=self.batch_size)))
+        return repeater(self.accelerator.prepare(DataLoader(
+            dl, 
+            batch_size=self.batch_size, 
+            num_workers=0,  # <--- CRUCIAL : Mettre à 0 pour le cache !
+            pin_memory=True
+        )))
 
     def save_checkpoint(self, fb, n, i):
         if self.accelerator.is_local_main_process:
