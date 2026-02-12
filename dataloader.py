@@ -42,7 +42,7 @@ def get_datasets():
         transforms.ToTensor(),
     ])
 
-    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
+    root = 'dataset_v4'
 
     init_ds = PairedDataset(root, split='train', domain='HES', transform=transform)
     final_ds = PairedDataset(root, split='train', domain='CD30', transform=transform)
@@ -58,12 +58,12 @@ def get_test_dataloader():
         transforms.ToTensor(),
     ])
 
-    root = os.path.join(cfg.DATA_DIR, 'dataset_v4')
+    root = 'dataset_v4'
     dataset = PairedDataset(root, split='test', domain='HES', transform=transform)
 
     return DataLoader(
         dataset, 
         batch_size=cfg.BATCH_SIZE, 
         shuffle=False, 
-        num_workers=cfg.NUM_WORKERS
+        num_workers=4
     )
