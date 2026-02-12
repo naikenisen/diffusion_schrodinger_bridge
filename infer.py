@@ -102,7 +102,6 @@ def save_results(input_batch, output_batch, output_dir, batch_idx, paired_files=
         hes_img = to_pil_image(input_batch[i].cpu())
         cd30_virtual_img = to_pil_image(output_batch[i].cpu())
         cd30_real_img = None
-        fname = None
         if paired_files is not None and cd30_dir is not None:
             fname = paired_files[batch_idx * batch_size + i]
             cd30_real_path = os.path.join(cd30_dir, fname)
@@ -115,16 +114,10 @@ def save_results(input_batch, output_batch, output_dir, batch_idx, paired_files=
         axes[1].imshow(cd30_virtual_img)
         axes[1].set_title('CD30 virtuel')
         axes[1].axis('off')
-        if cd30_real_img is not None:
-            axes[2].imshow(cd30_real_img)
-            axes[2].set_title('CD30 réel')
-            axes[2].axis('off')
-        else:
-            axes[2].imshow(np.zeros((hes_img.size[1], hes_img.size[0], 3), dtype=np.uint8))
-            axes[2].set_title('CD30 réel (absent)')
-            axes[2].axis('off')
+        axes[2].imshow(cd30_real_img)
+        axes[2].set_title('CD30 réel')
+        axes[2].axis('off')
 
-        # Légende sous chaque image
         for ax in axes:
             ax.set_xlabel('')
         plt.tight_layout()
@@ -133,24 +126,11 @@ def save_results(input_batch, output_batch, output_dir, batch_idx, paired_files=
         plt.close(fig)
 
 def run_inference(ckpt_path, output_dir='./results'):
-    device = torch.device(cfg.DEVICE)
-    print(f"Running inference on {device} using {ckpt_path}")
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
+    device = torch.device("cpu")
+    os.makedirs(output_dir, exist_ok=True)
     net = get_model(device)
-    try:
-        checkpoint = torch.load(ckpt_path, map_location=device)
-        if 'state_dict' in checkpoint:
-            net.load_state_dict(checkpoint['state_dict'])
-        else:
-            net.load_state_dict(checkpoint)
-        print("Model loaded successfully.")
-    except Exception as e:
-        print(f"Error loading model: {e}")
-        return
-
+    checkpoint = torch.load(ckpt_path, map_location=device)
+    net.load_state_dict(checkpoint)
     net.eval()
 
     n = cfg.NUM_STEPS // 2
@@ -161,7 +141,6 @@ def run_inference(ckpt_path, output_dir='./results'):
     langevin = Langevin(cfg.NUM_STEPS, (cfg.CHANNELS, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE), gammas, device=device, mean_match=cfg.MEAN_MATCH)
 
     test_loader = get_test_dataloader()
-    print(f"Test dataset size: {len(test_loader.dataset)}")
 
     print("Starting generation...")
     with torch.no_grad():
@@ -172,8 +151,6 @@ def run_inference(ckpt_path, output_dir='./results'):
                 batch = data.to(device)
             _, final_image = langevin.sample(net, batch)
             save_results(batch, final_image, output_dir, i)
-
-    print(f"Inference done. Results saved in {output_dir}")
 
 checkpoint = './checkpoints/bridge_epoch_10.ckpt' # Exemple de chemin vers un checkpoint
 out_dir = './results' # Exemple de répertoire de sortie
