@@ -237,7 +237,12 @@ def get_models():
         "num_heads": cfg.NUM_HEADS, "num_heads_upsample": cfg.NUM_HEADS_UPSAMPLE,
         "use_scale_shift_norm": cfg.USE_SCALE_SHIFT_NORM,
     }
-    return UNetModel(**kwargs), UNetModel(**kwargs)
+    net_f = UNetModel(**kwargs)
+    net_b = UNetModel(**kwargs)
+    if getattr(cfg, 'USE_FP16', False):
+        net_f = net_f.half()
+        net_b = net_b.half()
+    return net_f, net_b
 
 class IPFTrainer(torch.nn.Module):
     def __init__(self):
@@ -385,10 +390,6 @@ class IPFTrainer(torch.nn.Module):
             t9 = _time.time()
 
             # Logging
-            if i % cfg.LOG_STRIDE == 0:
-                print(f"[TIMING] Batch {i}: Dataloader={t1-t0:.3f}s, StepsCalc={t2-t1:.3f}s, ToGPU={t3-t2:.3f}s, Forward={t5-t4:.3f}s, Backward={t6-t5:.3f}s, Optimizer={t7-t6:.3f}s, EMA={t9-t8:.3f}s", flush=True)
-            if i % cfg.LOG_STRIDE == 0 and self.accelerator.is_local_main_process:
-                self.logger.log_metrics({'loss': loss.item(), 'step': i, 'ipf': n, 'dir': fb})
 
             if i > 0 and i % cfg.CACHE_REFRESH_STRIDE == 0:
                 train_dl = self.new_cacheloader(fb, n)
