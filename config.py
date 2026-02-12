@@ -17,6 +17,7 @@ GRAD_CLIP = 1.0
 CACHE_NPAR = 64             # Génération plus rapide (parallélisme accru)
 NUM_CACHE_BATCHES = 40      # 40 * 64 = 2560 images en cache (beaucoup plus stable)
 CACHE_REFRESH_STRIDE = 400  # On rafraîchit moins souvent car le cache est plus gros
+NUM_WORKERS = 4              # Pour accélérer le chargement du cache
 
 # --- Diffusion Physics ---
 NUM_STEPS = 20              # Bon compromis qualité/vitesse
