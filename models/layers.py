@@ -1,10 +1,13 @@
-
 import math
 from abc import abstractmethod
 import torch as th
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+
+# --- Fix pour le Mixed Precision ---
+import torch.cuda.amp as amp 
+# -----------------------------------
 
 class SiLU(nn.Module):
     def forward(self, x):
@@ -105,9 +108,16 @@ class CheckpointFunction(th.autograd.Function):
     @staticmethod
     def backward(ctx, *output_grads):
         ctx.input_tensors = [x.detach().requires_grad_(True) for x in ctx.input_tensors]
+        
         with th.enable_grad():
-            shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
-            output_tensors = ctx.run_function(*shallow_copies)
+            # --- CORRECTIF APPLIQUÉ ICI ---
+            # On active l'autocast pour que le re-calcul (re-forward) utilise
+            # les bons types (FP16/FP32) et évite le crash.
+            with amp.autocast(): 
+                shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
+                output_tensors = ctx.run_function(*shallow_copies)
+            # ------------------------------
+            
         input_grads = th.autograd.grad(
             output_tensors,
             ctx.input_tensors + ctx.input_params,
