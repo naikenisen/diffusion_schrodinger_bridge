@@ -5,7 +5,6 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 from .layers import *
-from .layers import *
 
 class UNetModel(nn.Module):
     def __init__(
@@ -152,13 +151,6 @@ class UNetModel(nn.Module):
 
     def forward(self, x, timesteps, y=None):
 
-        """
-        Apply the model to an input batch.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: an [N x C x ...] Tensor of outputs.
-        """
         timesteps = timesteps.squeeze()
         assert (y is not None) == (
             self.num_classes is not None
@@ -181,34 +173,3 @@ class UNetModel(nn.Module):
             h = module(cat_in, emb)
         h = h.type(x.dtype)
         return self.out(h)
-
-    def get_feature_vectors(self, x, timesteps, y=None):
-        """
-        Apply the model and return all of the intermediate tensors.
-        :param x: an [N x C x ...] Tensor of inputs.
-        :param timesteps: a 1-D batch of timesteps.
-        :param y: an [N] Tensor of labels, if class-conditional.
-        :return: a dict with the following keys:
-                 - 'down': a list of hidden state tensors from downsampling.
-                 - 'middle': the tensor of the output of the lowest-resolution
-                             block in the model.
-                 - 'up': a list of hidden state tensors from upsampling.
-        """
-        hs = []
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-        if self.num_classes is not None:
-            assert y.shape == (x.shape[0],)
-            emb = emb + self.label_emb(y)
-        result = dict(down=[], up=[])
-        h = x.type(self.inner_dtype)
-        for module in self.input_blocks:
-            h = module(h, emb)
-            hs.append(h)
-            result["down"].append(h.type(x.dtype))
-        h = self.middle_block(h, emb)
-        result["middle"] = h.type(x.dtype)
-        for module in self.output_blocks:
-            cat_in = th.cat([h, hs.pop()], dim=1)
-            h = module(cat_in, emb)
-            result["up"].append(h.type(x.dtype))
-        return result

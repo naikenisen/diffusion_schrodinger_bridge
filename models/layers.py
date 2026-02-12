@@ -15,25 +15,13 @@ class GroupNorm32(nn.GroupNorm):
         return super().forward(x.to(self.weight.dtype))
 
 def conv_nd(dims, *args, **kwargs):
-    if dims == 1:
-        return nn.Conv1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.Conv2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.Conv3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
+    return nn.Conv2d(*args, **kwargs)
 
 def linear(*args, **kwargs):
     return nn.Linear(*args, **kwargs)
 
 def avg_pool_nd(dims, *args, **kwargs):
-    if dims == 1:
-        return nn.AvgPool1d(*args, **kwargs)
-    elif dims == 2:
-        return nn.AvgPool2d(*args, **kwargs)
-    elif dims == 3:
-        return nn.AvgPool3d(*args, **kwargs)
-    raise ValueError(f"unsupported dimensions: {dims}")
+    return nn.AvgPool2d(*args, **kwargs)
 
 def update_ema(target_params, source_params, rate=0.99):
     for targ, src in zip(target_params, source_params):
@@ -133,12 +121,7 @@ class Upsample(nn.Module):
 
     def forward(self, x):
         assert x.shape[1] == self.channels
-        if self.dims == 3:
-            x = F.interpolate(
-                x, (x.shape[2], x.shape[3] * 2, x.shape[4] * 2), mode="nearest"
-            )
-        else:
-            x = F.interpolate(x, scale_factor=2, mode="nearest")
+        x = F.interpolate(x, scale_factor=2, mode="nearest")
         if self.use_conv:
             x = self.conv(x)
         return x
@@ -151,7 +134,7 @@ class Downsample(nn.Module):
         self.channels = channels
         self.use_conv = use_conv
         self.dims = dims
-        stride = 2 if dims != 3 else (1, 2, 2)
+        stride = 2
         if use_conv:
             self.op = conv_nd(dims, channels, channels, 3, stride=stride, padding=1)
         else:
