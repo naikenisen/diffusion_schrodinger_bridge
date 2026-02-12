@@ -395,8 +395,9 @@ class IPFTrainer(torch.nn.Module):
             t9 = _time.time()
 
             # Logging
-            if i % cfg.LOG_STRIDE == 0 and self.accelerator.is_local_main_process:
+            if i % cfg.LOG_STRIDE == 0:
                 print(f"[TIMING] Batch {i}: Dataloader={t1-t0:.3f}s, StepsCalc={t2-t1:.3f}s, ToGPU={t3-t2:.3f}s, Forward={t5-t4:.3f}s, Backward={t6-t5:.3f}s, Optimizer={t7-t6:.3f}s, EMA={t9-t8:.3f}s")
+            if i % cfg.LOG_STRIDE == 0 and self.accelerator.is_local_main_process:
                 self.logger.log_metrics({'loss': loss.item(), 'step': i, 'ipf': n, 'dir': fb})
 
             if i > 0 and i % cfg.CACHE_REFRESH_STRIDE == 0:
