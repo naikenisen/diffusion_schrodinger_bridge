@@ -289,6 +289,8 @@ class UNetModel(nn.Module):
             self.out[-1].bias.zero_()
 
     def forward(self, x, timesteps):
+        if len(timesteps.shape) == 2:
+            timesteps = timesteps.squeeze(1)
         if len(timesteps.shape) == 0:
             timesteps = timesteps.unsqueeze(0)
             
