@@ -270,6 +270,11 @@ class IPFTrainer(torch.nn.Module):
             'b': torch.optim.Adam(self.net['b'].parameters(), lr=self.lr)
         }
         self.use_fp16 = getattr(cfg, 'USE_FP16', False)
+        # Préparer les optimizers une seule fois avec accelerate
+        self.net['f'] = self.accelerator.prepare(self.net['f'])
+        self.net['b'] = self.accelerator.prepare(self.net['b'])
+        self.optimizer['f'] = self.accelerator.prepare(self.optimizer['f'])
+        self.optimizer['b'] = self.accelerator.prepare(self.optimizer['b'])
         if self.use_fp16:
             self.scaler = GradScaler('cuda')
         if cfg.EMA:
@@ -336,8 +341,7 @@ class IPFTrainer(torch.nn.Module):
     def ipf_step(self, fb, n):
         print(f"Starting IPF step {n} for direction {fb}")
         train_dl = self.new_cacheloader(fb, n)
-        self.net[fb] = self.accelerator.prepare(self.net[fb])
-        self.optimizer[fb] = self.accelerator.prepare(self.optimizer[fb])
+        # Ne plus préparer net[fb] et optimizer[fb] ici, déjà fait dans __init__
 
         import time as _time
         for i in tqdm(range(cfg.NUM_ITER)):
