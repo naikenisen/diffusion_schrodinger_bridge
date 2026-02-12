@@ -20,7 +20,6 @@ class IPFTrainer:
         self.n_ipf = cfg.N_IPF
         self.num_steps = cfg.NUM_STEPS
         self.batch_size = cfg.BATCH_SIZE
-        self.transfer = cfg.TRANSFER
         
         # Time schedule
         n = self.num_steps // 2
@@ -60,7 +59,7 @@ class IPFTrainer:
 
         dl_args = {"num_workers": cfg.NUM_WORKERS, "drop_last": True, "shuffle": True}
         self.dl_init = repeater(self.accelerator.prepare(DataLoader(init_ds, batch_size=cfg.CACHE_NPAR, **dl_args)))
-        self.dl_final = repeater(self.accelerator.prepare(DataLoader(final_ds, batch_size=cfg.CACHE_NPAR, **dl_args))) if self.transfer else None
+        self.dl_final = repeater(self.accelerator.prepare(DataLoader(final_ds, batch_size=cfg.CACHE_NPAR, **dl_args)))
 
         # Prepare everything with Accelerator
         self.nets['f'], self.opts['f'] = self.accelerator.prepare(self.nets['f'], self.opts['f'])
@@ -89,24 +88,23 @@ class IPFTrainer:
         # Determine source direction and settings
         is_b = (direction == 'b')
         src_dir = 'f' if is_b else 'b'
-        
+
         # Get EMA sample net
         sample_net = self.emas[src_dir].ema_copy(self.nets[src_dir])
-        
+
         loader = CacheLoader(
-            direction, sample_net, 
-            dataloader_b=self.dl_init, 
+            direction, sample_net,
+            dataloader_b=self.dl_init,
             dataloader_f=self.dl_final,
             num_batches=cfg.NUM_CACHE_BATCHES,
-            langevin=self.langevin, 
-            n=n, 
+            langevin=self.langevin,
+            n=n,
             mean=None if is_b else self.mean_final,
             std=None if is_b else self.std_final,
             batch_size=cfg.CACHE_NPAR,
-            device=self.device,
-            transfer=self.transfer
+            device=self.device
         )
-        
+
         return repeater(self.accelerator.prepare(DataLoader(loader, batch_size=self.batch_size, num_workers=0)))
 
     def save(self, direction, n):

@@ -56,7 +56,7 @@ class Downsample(nn.Module):
         if use_conv:
             self.op = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
         else:
-            self.op = nn.AvgPool2d(stride=2)
+            self.op = nn.AvgPool2d(kernel_size=2, stride=2)
 
     def forward(self, x):
         return self.op(x)

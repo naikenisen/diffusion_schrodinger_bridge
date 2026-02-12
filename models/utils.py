@@ -111,7 +111,7 @@ class Langevin(nn.Module):
 
 class CacheLoader(Dataset):
     def __init__(self, fb, sample_net, dataloader_b, num_batches, langevin, n,
-                 mean, std, batch_size, device='cpu', dataloader_f=None, transfer=False):
+                 mean, std, batch_size, dataloader_f, device='cpu'):
         super().__init__()
         shape = langevin.d
         
@@ -122,7 +122,7 @@ class CacheLoader(Dataset):
             for b in tqdm(range(num_batches)):
                 if fb == 'b':
                     batch = next(dataloader_b)[0].to(device)
-                elif fb == 'f' and transfer:
+                elif fb == 'f':
                     batch = next(dataloader_f)[0].to(device)
                 else:
                     batch = mean + std * torch.randn((batch_size, *shape), device=device)
@@ -135,7 +135,7 @@ class CacheLoader(Dataset):
                 x = x.cpu().unsqueeze(2)
                 out = out.cpu().unsqueeze(2)
                 batch_data = torch.cat((x, out), dim=2)
-                
+
                 data_list.append(batch_data.flatten(start_dim=0, end_dim=1))
                 steps_list.append(steps_expanded.cpu().flatten(start_dim=0, end_dim=1))
 
