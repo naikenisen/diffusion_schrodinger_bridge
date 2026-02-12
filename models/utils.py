@@ -1,3 +1,4 @@
+import copy
 from itertools import repeat
 import torch
 import torch.nn as nn
@@ -32,26 +33,19 @@ class EMAHelper:
     def ema_copy(self, module):
         if isinstance(module, (nn.DataParallel, nn.parallel.DistributedDataParallel)):
             inner_module = module.module
-            locs = inner_module.locals
-            module_copy = type(inner_module)(*locs).to(self.device)
-            module_copy.load_state_dict(inner_module.state_dict())
+            module_copy = copy.deepcopy(inner_module).to(self.device)
             if isinstance(module, nn.DataParallel):
                 module_copy = nn.DataParallel(module_copy)
         else:
-            locs = module.locals
-            module_copy = type(module)(*locs).to(self.device)
-            module_copy.load_state_dict(module.state_dict())
+            module_copy = copy.deepcopy(module).to(self.device)
 
         for name, param in module_copy.named_parameters():
-            if param.requires_grad:
+            if param.requires_grad and name in self.shadow:
                 param.data.copy_(self.shadow[name].data)
         return module_copy
 
-def grad_gauss(x, m, var):
-    return -(x - m) / var
-
-class Langevin(torch.nn.Module):
-    def __init__(self, num_steps, shape, gammas, time_sampler, device=None,
+class Langevin(nn.Module):
+    def __init__(self, num_steps, shape, gammas, device=None,
                  mean_final=torch.tensor([0., 0.]), var_final=torch.tensor([.5, .5]),
                  mean_match=True):
         super().__init__()
@@ -64,25 +58,28 @@ class Langevin(torch.nn.Module):
         self.device = device if device is not None else gammas.device
         self.time = torch.cumsum(self.gammas, 0).to(self.device).float()
 
+    def get_gaussian_grad(self, x):
+        return -(x - self.mean_final.to(x.device)) / self.var_final.to(x.device)
+
     def record_init_langevin(self, init_samples):
         x = init_samples
         N = x.shape[0]
-        x_tot = torch.Tensor(N, self.num_steps, *self.d).to(x.device)
-        out = torch.Tensor(N, self.num_steps, *self.d).to(x.device)
+        x_tot = torch.zeros(N, self.num_steps, *self.d, device=x.device)
+        out = torch.zeros(N, self.num_steps, *self.d, device=x.device)
         steps_expanded = self.time.reshape((1, self.num_steps, 1)).repeat((N, 1, 1))
 
         for k in range(self.num_steps):
             gamma = self.gammas[k]
-            gradx = grad_gauss(x, self.mean_final, self.var_final)
+            gradx = self.get_gaussian_grad(x)
             t_old = x + gamma * gradx
-            z = torch.randn(x.shape, device=x.device)
+            z = torch.randn_like(x)
             x = t_old + torch.sqrt(2 * gamma) * z
             
-            gradx_new = grad_gauss(x, self.mean_final, self.var_final)
+            gradx_new = self.get_gaussian_grad(x)
             t_new = x + gamma * gradx_new
             
-            x_tot[:, k, :] = x
-            out[:, k, :] = (t_old - t_new)
+            x_tot[:, k] = x
+            out[:, k] = (t_old - t_new)
 
         return x_tot, out, steps_expanded
 
@@ -91,26 +88,24 @@ class Langevin(torch.nn.Module):
         N = x.shape[0]
         steps = self.time.reshape((1, self.num_steps, 1)).repeat((N, 1, 1))
         
-        x_tot = torch.Tensor(N, self.num_steps, *self.d).to(x.device)
-        out = torch.Tensor(N, self.num_steps, *self.d).to(x.device)
+        x_tot = torch.zeros(N, self.num_steps, *self.d, device=x.device)
+        out = torch.zeros(N, self.num_steps, *self.d, device=x.device)
 
         for k in range(self.num_steps):
             gamma = self.gammas[k]
-            net_out = net(x, steps[:, k, :])
-            if self.mean_match:
-                t_old = net_out
-            else:
-                t_old = x + net_out
-            z = torch.randn(x.shape, device=x.device)
+            net_out = net(x, steps[:, k])
+            
+            t_old = net_out if self.mean_match else x + net_out
+            
+            z = torch.randn_like(x)
             x = t_old + torch.sqrt(2 * gamma) * z
-            net_out_new = net(x, steps[:, k, :])
-            if self.mean_match:
-                t_new = net_out_new
-            else:
-                t_new = x + net_out_new
+            
+            net_out_new = net(x, steps[:, k])
+            
+            t_new = net_out_new if self.mean_match else x + net_out_new
 
-            x_tot[:, k, :] = x
-            out[:, k, :] = (t_old - t_new)
+            x_tot[:, k] = x
+            out[:, k] = (t_old - t_new)
 
         return x_tot, out, steps
 
@@ -119,11 +114,10 @@ class CacheLoader(Dataset):
                  mean, std, batch_size, device='cpu', dataloader_f=None, transfer=False):
         super().__init__()
         shape = langevin.d
-        num_steps = langevin.num_steps
-        self.data = torch.zeros((num_batches, batch_size * num_steps, 2, *shape))
-        self.steps_data = torch.zeros((num_batches, batch_size * num_steps, 1))
+        
+        data_list = []
+        steps_list = []
 
-        print(f"Generating cache for iteration {n} ({fb})...")
         with torch.no_grad():
             for b in tqdm(range(num_batches)):
                 if fb == 'b':
@@ -142,13 +136,11 @@ class CacheLoader(Dataset):
                 out = out.cpu().unsqueeze(2)
                 batch_data = torch.cat((x, out), dim=2)
                 
-                self.data[b] = batch_data.flatten(start_dim=0, end_dim=1)
-                self.steps_data[b] = steps_expanded.cpu().flatten(start_dim=0, end_dim=1)
-                
-                del x, out, batch_data
+                data_list.append(batch_data.flatten(start_dim=0, end_dim=1))
+                steps_list.append(steps_expanded.cpu().flatten(start_dim=0, end_dim=1))
 
-        self.data = self.data.flatten(start_dim=0, end_dim=1)
-        self.steps_data = self.steps_data.flatten(start_dim=0, end_dim=1)
+        self.data = torch.cat(data_list, dim=0)
+        self.steps_data = torch.cat(steps_list, dim=0)
 
     def __getitem__(self, index):
         return self.data[index][0], self.data[index][1], self.steps_data[index]
