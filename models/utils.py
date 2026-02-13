@@ -28,6 +28,9 @@ class EMAHelper:
             module = module.module
         for name, param in module.named_parameters():
             if param.requires_grad:
+                # Ensure shadow is on the same device as param
+                if self.shadow[name].device != param.data.device:
+                    self.shadow[name] = self.shadow[name].to(param.data.device)
                 self.shadow[name].data = (1. - self.mu) * param.data + self.mu * self.shadow[name].data
 
     def ema_copy(self, module):
