@@ -6,7 +6,7 @@ ATTENTION_RESOLUTIONS = "16" # Ajout de 32 pour la cohérence globale
 DROPOUT = 0.0               # OK, ou 0.1 si vous avez peu de données (<1000 paires)
 
 # --- Training ---
-BATCH_SIZE = 16             # Compromis sûr avec 128 channels. Tentez 64 si ça passe.
+BATCH_SIZE = 8             # Compromis sûr avec 128 channels. Tentez 64 si ça passe.
 LR = 1e-4
 NUM_ITER = 5000             # Suffisant par IPF step, permet de cycler plus vite
 N_IPF = 15                  # Très bien
@@ -14,10 +14,10 @@ GRAD_CLIP = 1.0
 
 # --- Cache & Langevin (Schrödinger Bridge) ---
 # C'est ici que la VRAM aide le plus :
-CACHE_NPAR = 16             # Génération plus rapide (parallélisme accru)
-NUM_CACHE_BATCHES = 40      # 40 * 64 = 2560 images en cache (beaucoup plus stable)
+CACHE_NPAR = 8             # Génération plus rapide (parallélisme accru)
+NUM_CACHE_BATCHES = 10      # 40 * 64 = 2560 images en cache (beaucoup plus stable)
 CACHE_REFRESH_STRIDE = 100  # On rafraîchit moins souvent car le cache est plus gros
-NUM_WORKERS = 4              # Pour accélérer le chargement du cache
+NUM_WORKERS = 2              # Pour accélérer le chargement du cache
 
 # --- Diffusion Physics ---
 NUM_STEPS = 20              # Bon compromis qualité/vitesse
